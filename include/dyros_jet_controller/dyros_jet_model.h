@@ -77,6 +77,7 @@ public:
   void getJacobianMatrix6DoF(EndEffector ee, Eigen::Matrix<double, 6, 6> *jacobian);
   void getJacobianMatrix7DoF(EndEffector ee, Eigen::Matrix<double, 6, 7> *jacobian);
   void getJacobianMatrix18DoF(EndEffector ee, Eigen::Matrix<double, 6, 18> *jacobian);
+  void getJacobianMatrix34DoF(EndEffector ee, Eigen::Matrix<double, 6, 34> *jacobian);
 
   // Gravity compensator_MJ 20/10/07
   void getLegLinksJacobianMatrix(unsigned int id, Eigen::Matrix<double, 6, 6> *jacobian);

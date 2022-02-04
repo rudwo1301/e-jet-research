@@ -448,5 +448,17 @@ void DyrosJetModel::getInertiaMatrix18DoF(Eigen::Matrix<double, 18, 18> *leg_ine
   leg_inertia->block<18, 18>(0, 0) = full_inertia.block<18, 18>(0, 0);
 }
 
+//econom2
+void DyrosJetModel::getJacobianMatrix34DoF(EndEffector ee, Eigen::Matrix<double, 6, 34> *jacobian)
+{
+  // Non-realtime
+  Eigen::MatrixXd full_jacobian(6,MODEL_WITH_VIRTUAL_DOF);
+  full_jacobian.setZero();
+  RigidBodyDynamics::CalcPointJacobian6D(model_, q_virtual_, end_effector_id_[ee],
+                                         Eigen::Vector3d::Zero(), full_jacobian, false);
+
+  *jacobian = full_jacobian;
+}
+
 
 }

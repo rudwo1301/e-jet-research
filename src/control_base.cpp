@@ -11,7 +11,7 @@ ControlBase::ControlBase(ros::NodeHandle &nh, double Hz) :
   joint_controller_(q_, q_dot_filtered_, control_time_),
   task_controller_(model_, q_, q_dot_filtered_, Hz, control_time_),
   haptic_controller_(model_,q_,Hz, control_time_),
-  walking_controller_(model_, q_, q_dot_filtered_, Hz, control_time_),
+  walking_controller_(model_, q_, q_dot_filtered_, torque_, Hz, control_time_),
   moveit_controller_(model_, q_, Hz),
   joint_control_as_(nh, "/dyros_jet/joint_control", false) // boost::bind(&ControlBase::jointControlActionCallback, this, _1), false
 {
@@ -151,7 +151,7 @@ void ControlBase::compute()
 
   tick_ ++;
   control_time_ = tick_ / Hz_;
-
+  walking_controller_.sim_time_ = cb_sim_time;
   //cout << "current_q_ext" << q_ext_ <<endl;
   /*
   if ((tick_ % 200) == 0 )
@@ -219,7 +219,7 @@ void ControlBase::parameterInitialize()
   q_dot_filtered_.setZero();
   torque_.setZero();
   left_foot_ft_.setZero();
-  left_foot_ft_.setZero();
+  right_foot_ft_.setZero();
   desired_q_.setZero();
   extencoder_init_flag_ = false;
 }

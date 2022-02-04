@@ -100,6 +100,8 @@ protected:
   Eigen::Vector12d q_ext_dot_;
   Eigen::Vector12d q_ext_offset_;
 
+  double cb_sim_time;
+
 
   Vector6d left_foot_ft_; // current left ft sensor values
   Vector6d right_foot_ft_; // current right ft sensor values

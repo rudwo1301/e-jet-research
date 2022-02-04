@@ -11,6 +11,9 @@
 #include <thread>
 #include <mutex>
 
+#include <std_msgs/String.h>
+#include <std_msgs/Float32MultiArray.h>
+
 #define ZERO_LIBRARY_MODE
 
 
@@ -35,8 +38,8 @@ public:
   static constexpr unsigned int PRIORITY = 8;
 
 
-  WalkingController(DyrosJetModel& model, const VectorQd& current_q, const VectorQd& current_qdot, const double hz, const double& control_time) :
-    total_dof_(DyrosJetModel::HW_TOTAL_DOF), model_(model), current_q_(current_q), current_qdot_(current_qdot), hz_(hz), current_time_(control_time), start_time_{}, end_time_{}, slowcalc_thread_(&WalkingController::slowCalc, this), calc_update_flag_(false), calc_start_flag_(false), ready_for_thread_flag_(false), ready_for_compute_flag_(false), foot_step_planner_mode_(false), walking_end_foot_side_ (false), foot_plan_walking_last_(false), foot_last_walking_end_(false)
+  WalkingController(DyrosJetModel& model, const VectorQd& current_q, const VectorQd& current_qdot, const VectorQd& current_torque, const double hz, const double& control_time) :
+    total_dof_(DyrosJetModel::HW_TOTAL_DOF), model_(model), current_q_(current_q), current_qdot_(current_qdot), current_torque_(current_torque), hz_(hz), current_time_(control_time), start_time_{}, end_time_{}, slowcalc_thread_(&WalkingController::slowCalc, this), calc_update_flag_(false), calc_start_flag_(false), ready_for_thread_flag_(false), ready_for_compute_flag_(false), foot_step_planner_mode_(false), walking_end_foot_side_ (false), foot_plan_walking_last_(false), foot_last_walking_end_(false)
   {
     walking_state_send = false;
     walking_end_ = false;
@@ -54,6 +57,25 @@ public:
 
   void parameterSetting();
   //functions in compute
+  // CP
+  void getCPTrajectory_M();
+  Eigen::Vector2d p;
+  Eigen::Vector2d cp_eos; 
+  Eigen::Vector2d cp;
+  Eigen::Vector2d cp_pre;
+  Eigen::Vector2d com;
+  Eigen::Vector2d com_dot;
+  Eigen::Vector2d com_pre;
+  Eigen::Vector2d dT, b;
+  Eigen::Vector2d cp_offset;
+  Eigen::Vector2d cp_measured_;
+  Eigen::Vector2d p_d;
+  Eigen::Vector2d p_d_pre;
+  double zmp_x = 0;
+  double zmp_y = 0; 
+  double del_t = 0.005;
+  //
+
   void getRobotState();
   void getComTrajectory();
   void getZmpTrajectory();
@@ -79,9 +101,144 @@ public:
   void hip_compensator(); // HW6
   void Compliant_control(Eigen::Vector12d desired_leg_q);
 
-  //comDOB
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////econom2 com dob////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
   void ComDOB_onestepZmp(unsigned int current_step_number, Eigen::VectorXd& temp_px, Eigen::VectorXd& temp_py);
-  //void Compliant_COM(Eigen::Vector3d xs, Eigen::Vector3d ys, double& UX, double& UY);
+  void ComDOB_onestepCom(unsigned int current_step_number, Eigen::VectorXd& temp_cx, Eigen::VectorXd& temp_cy);
+  void getComTrajectory_ori();
+  void zmpCalc();
+
+  //for comparison
+  void Com_DoB_js(Eigen::Vector12d desired_leg_q);
+  bool Com_DoB_js_calc = false;
+  void Com_DoB1_COM();
+  void Com_DoB2_ESO();
+  void choi_tro();
+
+  void mj_zmp();
+
+  //dg ext force//
+  void apply_ext_force();
+  std_msgs::Float32MultiArray mujoco_applied_ext_force;
+  ros::NodeHandle nh_ext_force_;
+  
+  ros::Publisher mujoco_ext_force_apply_pub;
+
+  //dg ext force//
+
+  unsigned int Com_DOB_DSP_mode;
+  unsigned int tick_index;
+  double total_length_input;
+  double temp;
+  Eigen::Vector3d com_dob_u;
+
+  Eigen::Vector3d com_dob_d;
+  
+  Eigen::Vector3d com_dob_d_com;
+  Eigen::Vector3d com_dob_d_com_imu;
+  
+  Eigen::Vector3d com_dob_d_hat;
+  Eigen::Vector3d com_dob_d_hat_b;
+  Eigen::Vector3d com_dob_d_hat_bb;
+
+  Eigen::Vector2d zmp_r_;
+  Eigen::Vector2d zmp_l_;
+  Eigen::Vector2d zmp_measured_;
+  Eigen::Vector2d zmp_measured_imu;
+  Eigen::Vector2d zmp_measured_LPF;
+  Eigen::Vector2d zmp_measured_LPF_b;
+  Eigen::Vector2d zmp_err_;
+
+  Eigen::Vector3d com_swing_current_;
+  Eigen::Vector3d com_trajectory_swing_;
+
+  Eigen::Vector3d ob_x_hat_x;
+  Eigen::Vector3d ob_x_hat_dot_x;
+
+  Eigen::Vector3d ob_x_hat_y;
+  Eigen::Vector3d ob_x_hat_y_b;
+  Eigen::Vector3d ob_x_hat_dot_y;
+
+  Eigen::Vector3d ob_x_hat_z;
+  Eigen::Vector3d ob_x_hat_dot_z;
+
+  double ob_y_des;
+
+  double ob_d_hat;
+  double ob_x_hat_b;
+  double ob_d_hat_bb;
+  double Yzmp_y;
+  double Yzmp_y_b;
+  double Yzmp_x;
+  double Yft_z;
+  double uy, uy_b;
+
+  double com_t_bb;
+  double com_t_b;
+  double com_t;
+  
+  double foot_step_tmp_;
+  double foot_width_tmp_;
+
+  bool five_critic_ = false;
+  double Com_DoB2_ezmp;
+  double Com_DoB2_ddot_;
+  Eigen::Quaterniond q_b_;
+
+  Eigen::Vector3d choi_integral_com_;
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////econom2 task compliant/////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  void econom2_task_compliant();
+  Eigen::Matrix<double, 12, 12> e_l_leg_inertia_mat_;
+  Eigen::Matrix<double, 12, 12> e_r_leg_inertia_mat_;
+
+  Eigen::Matrix<double, 6, 12> e_l_leg_jaco_;
+  Eigen::Matrix<double, 6, 12> e_r_leg_jaco_;
+
+  Eigen::Matrix<double, 3, 12> e_l_leg_jaco_v_;
+  Eigen::Matrix<double, 3, 12> e_r_leg_jaco_v_;
+
+  Eigen::Matrix<double, 3, 12> e_l_leg_jaco_w_;
+  Eigen::Matrix<double, 3, 12> e_r_leg_jaco_w_;
+
+  Eigen::Matrix<double, 6, 6> e_l_leg_lambda_;
+  Eigen::Matrix<double, 6, 6> e_r_leg_lambda_;
+  
+  Eigen::Matrix<double, 3, 3> e_l_leg_lambda_v_;
+  Eigen::Matrix<double, 3, 3> e_r_leg_lambda_v_;
+
+  double alpha;
+  double lfoot_comp_x_dot_b_;
+  double lfoot_comp_x_dot_;
+  double lfoot_comp_x_b_;
+  double lfoot_comp_x_;
+
+  double rfoot_comp_x_dot_b_;
+  double rfoot_comp_x_dot_;
+  double rfoot_comp_x_b_;
+  double rfoot_comp_x_;
+
+  Eigen::Vector6d l_ft_LPF_b_;
+  Eigen::Vector6d r_ft_LPF_b_;
+
+  Eigen::Vector6d l_ft_LPF_;
+  Eigen::Vector6d r_ft_LPF_;
+
+  void alpha_calc();
+  void e_TMP();
+
+  double sim_time_;
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////econom2 function end///////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
 
   //PreviewController    
   void previewcontroller(double dt, int NL, int tick, double x_i, double y_i, Eigen::Vector3d xs, Eigen::Vector3d ys, double& UX, double& UY, 
@@ -216,6 +373,7 @@ private:
   VectorQd target_q_;
   const VectorQd& current_q_;
   const VectorQd& current_qdot_;
+  const VectorQd& current_torque_;
 
   double prev_zmp_error_y = 0, prev_zmp_error_x = 0;
 
@@ -253,19 +411,30 @@ private:
   Eigen::Vector3d com_support_init_2;
   double lfoot_zmp_offset_;   //have to be initialized
   double rfoot_zmp_offset_;
+  double zmp_offset_;
   Eigen::Vector3d com_offset_;
 
   //Step current state variable//
   Eigen::Vector3d com_support_current_CLIPM_Euler;
   Eigen::Vector3d com_support_current_CLIPM_b;
   Eigen::Vector3d com_support_current_CLIPM;
+  Eigen::Vector3d com_support_current_bb;
   Eigen::Vector3d com_support_current_b;
-  Eigen::Vector3d com_support_current_dot;
   Eigen::Vector3d com_support_current_;
+  Eigen::Vector3d com_support_current_dot;
+  Eigen::Vector3d com_support_current_dot_LPF_b_;
+  Eigen::Vector3d com_support_current_dot_LPF;
+  Eigen::Vector3d com_support_current_ddot;
+  Eigen::Vector3d com_support_current_ddot_LPF_b_;
+  Eigen::Vector3d com_support_current_ddot_LPF;
   Eigen::Vector3d com_support_current_Euler;
   Eigen::Vector3d com_middle_support_current_;
   Eigen::Vector3d com_support_dot_current_;//from support foot
   Eigen::Vector3d com_support_ddot_current_;//from support foot 
+
+  double R_angle = 0, P_angle = 0;
+  double R_angle_i = 0, P_angle_i = 0;
+  double leg_legnth_L = 0, leg_length_R = 0;
 
   ///simulation
   Eigen::Vector3d com_sim_current_;
@@ -291,6 +460,13 @@ private:
 
   Eigen::Vector3d com_float_current_;
   Eigen::Vector3d com_float_current_RPY;
+  Eigen::Vector3d com_global_current_;
+  Eigen::Vector3d com_support_current_imu_b_;
+  Eigen::Vector3d com_support_current_imu;
+  Eigen::Vector3d com_support_current_dot_imu_b_;
+  Eigen::Vector3d com_support_current_dot_imu;
+  Eigen::Vector3d com_support_current_ddot_imu_b_;
+  Eigen::Vector3d com_support_current_ddot_imu;
   Eigen::Vector3d com_float_current_Euler;
   Eigen::Vector3d com_float_current_dot_;
   Eigen::Isometry3d pelv_float_current_;
@@ -313,6 +489,8 @@ private:
   Eigen::Vector12d desired_leg_q_;
   Eigen::Vector12d desired_leg_q_dot_;
   Eigen::Vector3d com_desired_;
+  Eigen::Vector3d com_desired_b;
+  Eigen::Vector3d com_desired_bb;
   Eigen::Vector3d com_dot_desired_;
   Eigen::Vector2d zmp_desired_;
   // 수업용

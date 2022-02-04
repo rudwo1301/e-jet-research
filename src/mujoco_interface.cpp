@@ -17,7 +17,7 @@ mujoco_interface::mujoco_interface(ros::NodeHandle &nh, double Hz):
     mujoco_joint_set_msg_.position.resize(total_dof_);
     mujoco_joint_set_msg_.torque.resize(total_dof_);
 
-    mujoco_sim_time =0.0;
+    //mujoco_sim_time =0.0;
     ROS_INFO("Waiting for connection with Mujoco Ros interface ");
     simready();
     ROS_INFO("Mujoco Ros interface Connected");
@@ -37,6 +37,7 @@ void mujoco_interface::simready()
 void mujoco_interface::simTimeCallback(const std_msgs::Float32ConstPtr &msg)
 {
   mujoco_sim_time = msg->data;
+  cb_sim_time = mujoco_sim_time;
   //ControlBase::syncSimControlTime(mujoco_sim_time);
   //std::cout << 'asdrfsdf' <<std::endl;
 }
