@@ -163,6 +163,21 @@ void DyrosJetModel::updateSensorData(const Eigen::Vector6d &r_ft, const Eigen::V
   accel_ = acc;
   angvel_ = angvel;
   grav_rpy_ = grav_rpy;
+
+}
+
+//econom2
+void DyrosJetModel::updateSensorData(const Eigen::Vector6d &r_ft, const Eigen::Vector6d &l_ft, const Eigen::Vector12d &q_ext, const Eigen::Vector3d &acc, const Eigen::Vector3d &angvel, const Eigen::Vector3d &grav_rpy, const Eigen::Vector3d &collide_ft)
+{
+  r_ft_wrench_ = r_ft;
+  l_ft_wrench_ = l_ft;
+
+  q_ext_ = q_ext;
+  accel_ = acc;
+  angvel_ = angvel;
+  grav_rpy_ = grav_rpy;
+
+  collide_ft_ = collide_ft;
 }
 
 void DyrosJetModel::updateSimCom(const Eigen::Vector3d &sim_com)
@@ -460,5 +475,18 @@ void DyrosJetModel::getJacobianMatrix34DoF(EndEffector ee, Eigen::Matrix<double,
   *jacobian = full_jacobian;
 }
 
+void DyrosJetModel::getpelvJacobianMatrix34DoF(bool pelvis_option, Eigen::Matrix<double, 6, 34> *jacobian)
+{
+  if(pelvis_option)
+  {
+    unsigned int pelvis_id = model_.GetBodyId("base_link");
+    Eigen::MatrixXd full_jacobian(6,MODEL_WITH_VIRTUAL_DOF);
+    full_jacobian.setZero();
+    RigidBodyDynamics::CalcPointJacobian6D(model_, q_virtual_, pelvis_id,
+                                         Eigen::Vector3d::Zero(), full_jacobian, false);
+    *jacobian = full_jacobian;
+  }
+
+}
 
 }

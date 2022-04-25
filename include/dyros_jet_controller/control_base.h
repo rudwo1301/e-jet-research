@@ -106,6 +106,8 @@ protected:
   Vector6d left_foot_ft_; // current left ft sensor values
   Vector6d right_foot_ft_; // current right ft sensor values
 
+  Vector3d collide_ft_;
+
   tf::Quaternion imu_data_; ///< IMU data with filter
   Vector3d gyro_; // current gyro sensor values
   Vector3d accelometer_; // current accelometer values

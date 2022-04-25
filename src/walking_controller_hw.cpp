@@ -27,14 +27,14 @@ namespace dyros_jet_controller
   
   ofstream e_dis_1_graph("/home/econom2/data/e_dis_1_graph.txt");
   ofstream e_dis_2_graph("/home/econom2/data/e_dis_2_graph.txt");
-  ofstream e_dis_c_graph("/home/econom2/data/e_dis_c_graph.txt");
+  ofstream e_dis_tmp_graph("/home/econom2/data/e_dis_tmp_graph.txt");
 
-  ofstream e_alpha_graphl("/home/econom2/data/e_alpha_graphl.txt");
-  ofstream e_alpha_graphr("/home/econom2/data/e_alpha_graphr.txt");
   ofstream e_lfoot_z_graph("/home/econom2/data/e_lfoot_z_graph.txt");
 
   ofstream e_cp_graph1("/home/econom2/data/e_cp_graph1.txt");
   ofstream e_cp_graph2("/home/econom2/data/e_cp_graph2.txt");
+
+  ofstream e_jump_graph("/home/econom2/data/e_jump_graph.txt");
 
 void WalkingController::compute()
 {   
@@ -61,18 +61,16 @@ void WalkingController::compute()
           getComTrajectory_ori();
           //Com_DoB1_COM();
           Com_DoB2_ESO();
-          //choi_tro();
         }
         else if(Com_DOB_DSP_mode == 2)
         {
           getComTrajectory_ori();
-          Com_DoB1_COM();
+          //Com_DoB1_COM();
+          e_jump_trajectory();
+          e_jump_zmp_control();
         }
         
         getFootTrajectory();
-
-        //econom2_task_compliant();
-
         getPelvTrajectory();
 
         supportToFloatPattern();
@@ -91,7 +89,7 @@ void WalkingController::compute()
           Compliant_control(d_q); 
         }
 
-        if(Com_DOB_DSP_mode == 1)
+        if(Com_DOB_DSP_mode == 2 || Com_DOB_DSP_mode == 1)
         {
           for(int i = 0; i < 12; i++)
           { d_q(i) = desired_q_(i); }
@@ -99,9 +97,8 @@ void WalkingController::compute()
         }
 
         updateNextStepTime();
-        apply_ext_force();
         //com dob dsp
-        cout << current_step_num_ << "," << walking_tick_ << "," << tick_index << "," << Com_DOB_DSP_mode << endl;
+        cout << current_step_num_ << "," << walking_tick_ << "," << tick_index << endl;
       }
       else
       {
@@ -206,13 +203,13 @@ void WalkingController::parameterSetting()
   current_step_num_ = 0;
   walking_tick_ = 0;
 
-  foot_height_ = 0.05; 
+  foot_height_ = 0.0; 
   Com_DOB_DSP_mode = 1;
   //0 normal walking mode with preview control
-  //1 system id mode
-  //2 com dob mode
+  //1 com dob mode
+  //2 jump
   zmp_offset_ = 0.0;
-  foot_step_tmp_ = 1;
+  foot_step_tmp_ = 6;
   foot_width_tmp_ = 0.0;
 
   gyro_frame_flag_ = false;
@@ -340,6 +337,10 @@ void WalkingController::getRobotState()
 
   r_ft_ = model_.getRightFootForce();
   l_ft_ = model_.getLeftFootForce();
+  collide_ft_b = collide_ft_;
+  collide_ft_ = model_.getCollideForce();
+  collide_ft_ = 0.7*collide_ft_b + 0.3*collide_ft_;
+  grav_vec_ = model_.getImuAngvel();
 
   current_motor_q_leg_ = current_q_.segment<12>(0);
 }
@@ -849,15 +850,15 @@ void WalkingController::getZmpTrajectory()
 
 void WalkingController::zmpCalc()
 {
-  zmp_r_(0) = (-r_ft_(4) - r_ft_(0)*0.0062) / r_ft_(2);
-  zmp_r_(1) = (r_ft_(3) - r_ft_(1)*0.0062) / r_ft_(2);
-  zmp_l_(0) = (-l_ft_(4) - l_ft_(0)*0.0062) / l_ft_(2);
-  zmp_l_(1) = (l_ft_(3) - l_ft_(1)*0.0062) / l_ft_(2);
+  //0.0062
+  zmp_r_(0) = (-r_ft_(4) - r_ft_(0)*0.096) / r_ft_(2);
+  zmp_r_(1) = (r_ft_(3) - r_ft_(1)*0.096) / r_ft_(2);
+  zmp_l_(0) = (-l_ft_(4) - l_ft_(0)*0.096) / l_ft_(2);
+  zmp_l_(1) = (l_ft_(3) - l_ft_(1)*0.096) / l_ft_(2);
 
   zmp_measured_(0) = ((((lfoot_support_current_.linear()).topLeftCorner<2, 2>()*zmp_l_)(0) + (lfoot_support_current_.translation())(0))*l_ft_(2) + zmp_r_(0)*r_ft_(2)) / (r_ft_(2) + l_ft_(2));
   zmp_measured_(1) = ((((lfoot_support_current_.linear()).topLeftCorner<2, 2>()*zmp_l_)(1) + (lfoot_support_current_.translation())(1))*l_ft_(2) + zmp_r_(1)*r_ft_(2)) / (r_ft_(2) + l_ft_(2));
-  zmp_measured_(1) = zmp_measured_(1) + com_support_init_(1);
-
+  zmp_measured_(1) = 1.0*zmp_measured_(1) + com_support_init_(1);
 
   if(walking_tick_ == 0)
   {
@@ -875,10 +876,23 @@ void WalkingController::zmpCalc()
   l_ft_LPF_b_ = l_ft_LPF_;
   r_ft_LPF_b_ = r_ft_LPF_;
 
+  //l_ft_(2) = l_ft_(2) - 8.5;
+  //r_ft_(2) = r_ft_(2) + 8.5;
+
   zmp_measured_LPF = 0.9*zmp_measured_LPF_b + 0.1*zmp_measured_;
-  zmp_measured_LPF(1) = zmp_measured_LPF(1) + 0.00019;
+  zmp_measured_LPF(1) = zmp_measured_LPF(1) + 0.0004;
   l_ft_LPF_ = 0.9*l_ft_LPF_b_ + 0.1*l_ft_;
   r_ft_LPF_ = 0.9*r_ft_LPF_b_ + 0.1*r_ft_;
+
+  zmp_e_calc_(0) = -0.92*(l_ft_LPF_(4) + r_ft_LPF_(4) + ( l_ft_LPF_(0) + r_ft_LPF_(0))*0.96)/(l_ft_LPF_(2) + r_ft_LPF_(2)) + 0.007;
+  zmp_e_calc_(1) =  0.92*(l_ft_LPF_(3) + r_ft_LPF_(3) + (-l_ft_LPF_(2) + r_ft_LPF_(2))*com_support_init_(1))/(l_ft_LPF_(2) + r_ft_LPF_(2)) + com_support_init_(1);
+  
+  if(l_ft_(2) > 0)
+  { zmp_e_calc_(1) = (r_ft_LPF_(3) + r_ft_LPF_(2)*com_support_init_(1))/r_ft_LPF_(2) + com_support_init_(1); }
+  if(r_ft_(2) > 0)
+  { zmp_e_calc_(1) = (l_ft_LPF_(3) - l_ft_LPF_(2)*com_support_init_(1))/l_ft_LPF_(2) + com_support_init_(1); }
+
+  e_tmp_graph << zmp_e_calc_(0) << "," << zmp_e_calc_(1) << endl;
 }
 
 void WalkingController::zmpGenerator(const unsigned int norm_size, const unsigned planning_step_num)
@@ -1446,6 +1460,7 @@ void WalkingController::getComTrajectory()
   
   xs_(0) = com_support_current_(0); ys_(0) = com_support_current_(1);  
 
+  com_desired_b(1) = com_desired_(1) - 0.5*foot_step_support_frame_(current_step_num_,1);
   com_desired_(0) = UX_;
   com_desired_(1) = UY_;
   com_desired_(2) = pelv_support_start_.translation()(2);
@@ -1799,46 +1814,38 @@ void WalkingController::onestepCom(unsigned int current_step_number, Eigen::Vect
 
 void WalkingController::getPelvTrajectory()
 {
-  double z_rot = foot_step_support_frame_(current_step_num_,5);
-  
-  if(walking_tick_ == 0)
-  {
-    zmp_err_.setZero();
-  }
-  zmp_err_ = zmp_err_ + (p_d - zmp_measured_LPF)*0.005;
   if(Com_DOB_DSP_mode == 0)
   {
     pelv_trajectory_support_.translation()(0) = pelv_support_current_.translation()(0) + 1.0*(com_desired_(0) - com_support_current_(0));// - 0.15*zmp_err_(0);
     pelv_trajectory_support_.translation()(1) = pelv_support_current_.translation()(1) + 1.0*(com_desired_(1) - com_support_current_(1));// - 0.8*zmp_err_(1);
+    //pelv_trajectory_support_.translation()(2) = pelv_support_current_.translation()(2) + 1.0*(com_desired_(2) - com_support_current_(2));
     pelv_trajectory_support_.translation()(2) = com_desired_(2); 
   }
-  else
+  else if(Com_DOB_DSP_mode == 1)
   { 
     pelv_trajectory_support_.translation()(0) = pelv_support_current_.translation()(0) + 1.0*(com_dob_u(0) - com_support_current_(0));
-    //pelv_trajectory_support_.translation()(1) = com_dob_u(1);
     pelv_trajectory_support_.translation()(1) = pelv_support_current_.translation()(1) + 1.0*(com_dob_u(1) - com_support_current_(1));
-    //pelv_trajectory_support_.translation()(2) = com_desired_(2);
     pelv_trajectory_support_.translation()(2) = com_dob_u(2);
+  }
+  else if(Com_DOB_DSP_mode == 2)
+  { 
+    pelv_trajectory_support_.translation()(0) = pelv_support_current_.translation()(0) + 1.0*(com_dob_u(0) - com_support_current_(0));
+    pelv_trajectory_support_.translation()(1) = pelv_support_current_.translation()(1) + 1.0*(com_dob_u(1) - com_support_current_(1));
+    pelv_trajectory_support_.translation()(2) = pelv_support_current_.translation()(2) + 1.0*(com_dob_u(2) - com_support_current_(2));
+    //pelv_trajectory_support_.translation()(2) = com_dob_u(2);
   }
 
   Eigen::Vector3d Trunk_trajectory_euler;
   Trunk_trajectory_euler.setZero();
-
-  if(walking_tick_ < t_start_ + t_rest_init_ + t_double1_)
-  { Trunk_trajectory_euler(2) = pelv_support_euler_init_(2); }
-  else if(walking_tick_ >= t_start_ + t_rest_init_ + t_double1_ && walking_tick_ < t_start_ + t_total_ - t_double2_ - t_rest_last_)
-  { Trunk_trajectory_euler(2) = DyrosMath::cubic(walking_tick_,t_start_real_+t_double1_,t_start_+t_total_-t_double2_-t_rest_last_, pelv_support_euler_init_(2),z_rot/2.0,0.0,0.0); }
-  else
-  { Trunk_trajectory_euler(2) = z_rot/2.0; } 
   
   pelv_trajectory_support_.linear() = DyrosMath::rotateWithZ(Trunk_trajectory_euler(2))*DyrosMath::rotateWithY(Trunk_trajectory_euler(1))*DyrosMath::rotateWithX(Trunk_trajectory_euler(0));
   
-  Eigen::Vector3d com_desired_imu = R_*com_desired_;
+  Eigen::Vector3d com_desired_imu = pelv_support_current_.rotation()*com_desired_;
 
   e_com_x_graph << com_desired_(0) << "," << com_support_current_(0) << "," << com_support_current_dot_LPF(0) << "," << com_support_current_ddot_LPF(0) << "," << com_dob_u(0) << "," << com_support_current_imu(0) << "," << com_desired_imu(0) << endl;
-  e_com_y_graph << com_desired_(1) << "," << com_support_current_(1) << "," << com_support_current_dot_LPF(1) << "," << com_support_current_ddot_LPF(1) << "," << com_dob_u(1) << "," << com_support_current_imu(1) << "," << com_desired_imu(1) << endl;
-  e_com_z_graph << com_desired_(2) << "," << com_support_current_(2) << "," << com_support_current_dot_LPF(2) << "," << com_support_current_ddot_LPF(2) << "," << com_dob_u(2) << "," << com_support_current_imu(2) << "," << com_desired_imu(2) << endl;
-  double zmp_y = com_support_current_(1) - zc_*com_support_current_ddot_LPF(1)/GRAVITY;
+  e_com_y_graph << com_desired_(1) << "," << com_support_current_(1) << "," << com_support_current_dot_LPF(1) << "," << com_support_current_ddot_LPF(1) << "," << com_dob_u(1) << "," << com_support_current_imu(1) << "," << pelv_support_current_.rotation()(0,0) << "," << R_.rotation()(0,0) << "," << q_sim_virtual_(3) << endl;
+  q_sim_virtual_ = model_.getMujocoCom();
+  e_com_z_graph << com_desired_(2) << "," << com_support_current_(2) << "," << com_support_current_dot_LPF(2) << "," << com_support_current_ddot_LPF(2) << "," << com_dob_u(2) << "," << com_support_current_imu(2) << "," << q_sim_virtual_(2) << endl;
 }
 
 void WalkingController::supportToFloatPattern()
@@ -2024,6 +2031,27 @@ void WalkingController::computeIK_e(Eigen::Isometry3d float_trunk_transform, Eig
   
 }
 
+void WalkingController::computeIK_e_jaco(Eigen::Isometry3d float_trunk_transform, Eigen::Isometry3d float_lleg_transform, Eigen::Isometry3d float_rleg_transform, Eigen::Vector12d& q_des)
+{
+  Eigen::Isometry3d trunk_lleg_transform, trunk_rleg_transform;
+  
+  trunk_lleg_transform.translation() = float_lleg_transform.translation() - float_trunk_transform.translation();
+  trunk_rleg_transform.translation() = float_rleg_transform.translation() - float_trunk_transform.translation();
+  
+  Eigen::Isometry3d global_transform;
+  global_transform.setIdentity();
+  global_transform.linear() = R_.linear();
+
+  trunk_lleg_transform = global_transform*trunk_lleg_transform;
+  trunk_rleg_transform = global_transform*trunk_rleg_transform;
+
+  Eigen::Matrix<double, 6, 34> tmp_l_leg_full_jaco_;
+  Eigen::Matrix<double, 6, 34> tmp_r_leg_full_jaco_;
+
+  model_.getJacobianMatrix34DoF((DyrosJetModel::EndEffector)0, &tmp_l_leg_full_jaco_);
+  model_.getJacobianMatrix34DoF((DyrosJetModel::EndEffector)1, &tmp_r_leg_full_jaco_);
+}
+
 void WalkingController::updateNextStepTime()
 {
   if(walking_tick_ == t_last_)  
@@ -2151,7 +2179,7 @@ void WalkingController::Compliant_control(Eigen::Vector12d desired_leg_q)
   d_hat = 0.7*d_hat_b + 0.3*d_hat; // 필터링
  
   double default_gain = 0.0;  
-  double compliant_gain = 1.0;
+  double compliant_gain = 0.0;
   double compliant_tick = 0.1*hz_;
   double gain_temp;
   for (int i = 0; i < 12; i ++)
@@ -2244,14 +2272,33 @@ void WalkingController::Com_DoB_js(Eigen::Vector12d desired_leg_q)
 
   d_hat = 0.7*d_hat_b + 0.3*d_hat; // 필터링
  
-  double compliant_gain = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0.0, 0.0, 0.0, 0.0);
+  Eigen::Vector12d compliant_gain;
+  for (int i = 0; i < 12; i++)
+  {
+    compliant_gain(i) = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0.0, 0.0, 0.0, 0.0);
+    //compliant_gain(i) = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0.0, 5.0, 0.0, 0.0);
+  }
 
-  DOB_IK_output_ = desired_leg_q + compliant_gain*d_hat; 
+  d_hat(2) = d_hat(2) - 0.001; d_hat(8) = d_hat(8) + 0.001; 
+  d_hat(3) = d_hat(3) - 0.0025; d_hat(9) = d_hat(9) + 0.0025; 
+  //d_hat(4) = 0; d_hat(10)= 0;
+  for (int i = 0; i < 12; i ++)
+  {
+    if(i==2||i==3||i==4||i==8||i==9||i==10)
+    {
+      compliant_gain(i) = compliant_gain(i)*0.5;
+    }
+    DOB_IK_output_(i) = desired_leg_q(i) + compliant_gain(i)*d_hat(i); 
+  }
   pre_motor_q_leg_ = current_motor_q_leg_; 
   d_hat_b = d_hat;
-  //e_tmp_graph << d_hat(0) << "," << d_hat(1) << "," << d_hat(2) << "," << d_hat(3) << "," << d_hat(4) << "," << d_hat(5) << "," << 
-                 //d_hat(6) << "," << d_hat(7) << "," << d_hat(8) << "," << d_hat(9) << "," << d_hat(10) << "," << d_hat(11) << endl;
-  //e_tmp_2_graph << pelv_support_current_.rotation()(0,0) << endl;
+  
+  e_tmp_2_graph << d_hat(0) << "," << DOB_IK_output_(0) << "," 
+                << d_hat(1) << "," << DOB_IK_output_(1) << "," 
+                << d_hat(2) << "," << DOB_IK_output_(2) << "," 
+                << d_hat(3) << "," << DOB_IK_output_(3) << "," 
+                << d_hat(4) << "," << DOB_IK_output_(4) << "," 
+                << d_hat(5) << "," << DOB_IK_output_(5) << endl;
   DOB_IK_output_b_ = DOB_IK_output_; 
 }
 
@@ -2261,13 +2308,8 @@ void WalkingController::Com_DoB1_COM()
   double kp_y, kv_y;
   del_t = 1/hz_;
 
-  kp_y = 225.52;//354.5;
-  kv_y = 6.161;//14.42;
-  //joint gain 3000 1532 50.25
-
-  double kp, kpp, kv;
-  kp = 225.52, kv = 6.161;
-  kpp = 1.27 + DyrosMath::cubic(tick_index, 5.0*hz_, 9.0*hz_, 0.0, 6.5, 0.0, 0.0) - DyrosMath::cubic(tick_index, 13.0*hz_, 15.0*hz_, 0.0, 6.5, 0.0, 0.0);
+  kp_y = 225.52;
+  kv_y = 6.161;
 
   double cut_off_freq = 6.0;
   double w = 2*M_PI*cut_off_freq;
@@ -2278,8 +2320,17 @@ void WalkingController::Com_DoB1_COM()
   Eigen::Vector3d com_dob_gain;
   com_dob_gain.setZero();
   com_dob_gain(1) = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0.0, 0.0, 0.0, 0.0);
+  if(tick_index >=1000)
+  {
+    cout << "Ready" << endl;
+  }
 
   com_dob_u(1) = com_desired_(1) + com_dob_gain(1) * (com_dob_d_hat(1)+0.0003);
+
+  if(tick_index >= 600)
+  {
+    com_dob_u(1) = com_dob_u(1) + 0.0;
+  }
 
   if(walking_tick_ == 0)
   {
@@ -2288,9 +2339,6 @@ void WalkingController::Com_DoB1_COM()
   else
   {    
     com_dob_d(1) = (com_support_current_ddot_imu(1) + kv_y*com_support_current_dot_imu(1) + kp_y*com_support_current_imu(1))/kp_y - com_dob_u(1);
-    //com_dob_d(1) = (com_support_current_ddot_LPF(1) + kv_y*com_support_current_dot_LPF(1) + kp_y*com_support_current_(1))/kp_y - com_dob_u(1);
-
-    //com_dob_d(1) = (com_support_current_ddot_imu(1) + kv*com_support_current_dot_imu(1) + (kp + kpp)*com_support_current_imu(1))/kp - com_dob_u(1);
   }
   
   if(walking_tick_ == 0)
@@ -2310,29 +2358,19 @@ void WalkingController::Com_DoB2_ESO()
 {
   double uff = com_desired_(1);
 
+  //double kp = 125, kv = 10;
   double kp = 225.52, kv = 6.161;
-  double kpp = 1.27;// + DyrosMath::cubic(tick_index, 4.0*hz_, 7.0*hz_, 0.0, 6.5, 0.0, 0.0) - DyrosMath::cubic(tick_index, 13.0*hz_, 14.0*hz_, 0.0, 16.5, 0.0, 0.0);
-  //double kpp = 1.27 + DyrosMath::cubic(tick_index, 5.0*hz_, 9.0*hz_, 0.0, 6.5, 0.0, 0.0) - DyrosMath::cubic(tick_index, 13.0*hz_, 15.0*hz_, 0.0, 6.5, 0.0, 0.0);
-  double kp2 = 225.52, kv2 = 6.161;
 
-  double Ll1pLl2 = -26;  double Kl1pKl1 = -30;
-  double Ll1mLl2 =  168; double Kl1mKl2 =  215;
-  double Ll3 = -10;
+  Eigen::MatrixXd A, B, C, C_cp, D, Leso, Keso;
 
-  Eigen::MatrixXd A, B, C, C2, D, D2, Leso, Keso;
+  double y_hat, y_hat_cp;
+  double y_sensor, y_model, y_dynamics, y_cp;
 
-  double y_hat, y_hat2;
-  double y_sensor;
-  double y_dynamics;
-  double y_model;
-  
   Leso.resize(1,3); Keso.resize(1,2);
   A.resize(3,3);
   A << 0,1,0, -kp,-kv,kp, 0,0,0;
   B.resize(3,1);
   B << 0,kp,0;
-
-  Keso << Kl1mKl2/kp - 1, -(Kl1pKl1 + kv)/kp;
 
   if(walking_tick_ == 0)
   {
@@ -2340,248 +2378,479 @@ void WalkingController::Com_DoB2_ESO()
     ob_x_hat_y(0) = com_support_init_(1);
     ob_x_hat_y_b = ob_x_hat_y;
     ob_x_hat_dot_y.setZero();
-    uy_b = uff;
+    uy_b = (Keso(0) + 1)*uff - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
   }
 
-  double zmp_com = 1;
-  if(zmp_com == 1)
+  double zmp_com_cp = 1;//0 zmp 1 com 2 cp
+  if(zmp_com_cp == 0)
   {
-    Leso << 5.4206, -0.0986, 4.7955;//-10
-    //Leso << 10.1302, 7.0109, 9.5910;//-20
+    //Leso << 5.4206, -0.0986, 4.7955;//-10
+    Leso << 10.1302, 7.0109, 9.5910;//-20
     //Leso << 24.2591, 28.3394, 23.9774;//-50
 
-    A << 0,1,0, -kp-kpp,-kv,kp, 0,0,0;
+    A << 0,1,0, -kp,-kv,kp, 0,0,0;
     C.resize(1,3);
-    C << 1+zc_*(kp+kpp)/GRAVITY,zc_*kv/GRAVITY,0;
+    C << 1+zc_*kp/GRAVITY,zc_*kv/GRAVITY,0;
     D.resize(1,1);
     D << -zc_*kp/GRAVITY;
 
-    C2.resize(1,3);
-    C2 << 1+zc_*kp2/GRAVITY,zc_*kv2/GRAVITY,0;
-    D2.resize(1,1);
-    D2 << -zc_*kp2/GRAVITY;
-
     y_hat = C(0)*ob_x_hat_y_b(0) + C(1)*ob_x_hat_y_b(1) + C(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
-    y_hat2 = C2(0)*ob_x_hat_y_b(0) + C2(1)*ob_x_hat_y_b(1) + C2(2)*ob_x_hat_y_b(2) + D2(0)*uy_b;
-    
-    y_sensor = zmp_measured_imu(1);
-    //y_sensor = zmp_measured_LPF(1);
+    y_sensor = zmp_e_calc_(1);
+    y_model = C(0)*com_support_current_imu(1) + C(1)*com_support_current_dot_imu(1) + C(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
     y_dynamics = com_support_current_imu(1) - zc_*com_support_current_ddot_imu(1)/GRAVITY;
-    y_model = C(0)*com_support_current_imu(1) + C(1)*com_support_current_dot_imu(1) + D(0)*uy_b;
-    
+
+    cout << "zmp" << endl;
   }
-  else
+  else if(zmp_com_cp == 1)
   {
+    double Keso_real = -10;
+    double Keso_im = 2;
+
+    Keso << (Keso_real*Keso_real - Keso_im*Keso_im)/kp - 1, -(2*Keso_real + kv)/kp;
+
+    double Leso_r = -30;
+    double Leso_im = 2;
+    double Ll1pLl2 = 2*Leso_r;
+    double Ll1mLl2 = Leso_r*Leso_r - Leso_im*Leso_im;
+    double Ll3 = -20;
+
     Leso(0) = -kv - Ll1pLl2 - Ll3;
     Leso(1) = Ll1mLl2 + Ll3*(Ll1pLl2) - kp - Leso(0)*kv;
     Leso(2) = -Ll3*Ll1mLl2/kp;
 
     C.resize(1,3);
     C << 1,0,0;
+    C_cp.resize(1,3);
+    C_cp << 1,sqrt(zc_/GRAVITY),0;
     D.resize(1,1);
     D << 0;
     y_hat = C(0)*ob_x_hat_y_b(0) + C(1)*ob_x_hat_y_b(1) + C(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
+    y_hat_cp = C_cp(0)*ob_x_hat_y_b(0) + C_cp(1)*ob_x_hat_y_b(1) + C_cp(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
+    
     y_sensor = com_support_current_imu(1);
+    y_cp = C_cp(0)*com_support_current_imu(1) + C_cp(1)*com_support_current_dot_imu(1) + C_cp(2)*com_support_current_ddot_imu(1) + D(0)*uy_b;
+
+    cout << "com" << endl;
+  }
+  else if(zmp_com_cp == 2)
+  {
+    double Keso_real = -10;
+    double Keso_im = 1;
+
+    Keso << (Keso_real*Keso_real - Keso_im*Keso_im)/kp - 1, -(2*Keso_real + kv)/kp;
+    
+    double Leso_r = -30;
+    double Leso_im = 2;
+    double Ll1pLl2 = 2*Leso_r;
+    double Ll1mLl2 = Leso_r*Leso_r - Leso_im*Leso_im;
+    double Ll3 = -20;
+
+    Leso(2) = -Ll3*Ll1mLl2/kp;
+
+    Eigen::Matrix2d calc_tmp_mat;
+    calc_tmp_mat.setZero();
+    calc_tmp_mat << 1, sqrt(zc_/GRAVITY), kv - sqrt(zc_/GRAVITY)*kp, 1;
+
+    Eigen::MatrixXd calc_tmp_vec;
+    calc_tmp_vec.resize(2,1);
+    calc_tmp_vec << -kv - Ll1pLl2 - Ll3, Ll1mLl2 + Ll3*(Ll1pLl2) - kp - kp*sqrt(zc_/GRAVITY)*Leso(2);
+
+    calc_tmp_vec = calc_tmp_mat.inverse()*calc_tmp_vec;
+
+    Leso(0) = calc_tmp_vec(0);
+    Leso(1) = calc_tmp_vec(1);
+
+    C_cp.resize(1,3);
+    C_cp << 1,sqrt(zc_/GRAVITY),0;
+    D.resize(1,1);
+    D << 0;
+
+    y_hat = C_cp(0)*ob_x_hat_y_b(0) + C_cp(1)*ob_x_hat_y_b(1) + C_cp(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
+    y_sensor = C_cp(0)*com_support_current_imu(1) + C_cp(1)*com_support_current_dot_imu(1) + C_cp(2)*com_support_current_ddot_imu(1) + D(0)*uy_b;
+
+    cout << "cp" << endl;
   }
 
-  ob_x_hat_dot_y = A*ob_x_hat_y_b + B*uy_b + Leso*(y_sensor - y_hat2);
+  double dob_gain = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_,0.0, 1.0, 0.0, 0.0);
 
-  ob_x_hat_y = ob_x_hat_y + ob_x_hat_dot_y*1/hz_;
-  ob_x_hat_y_b = ob_x_hat_y;
+  ob_x_hat_dot_y = A*ob_x_hat_y_b + B*uy_b + Leso*(y_sensor - y_hat);
 
-  double dob_gain = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_,0.0, 0.0, 0.0, 0.0);
+  e_dis_2_graph << ob_x_hat_y(0) << "," << ob_x_hat_y(2);
   
-  double u_ref = uff + (1-dob_gain)*0.0015 + dob_gain*(ob_x_hat_y(2));
-  uy_b = (Keso(0) + 1)*u_ref - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
-  //uy_b = uff + DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0, 0.05, 0.0, 0.0);//1.148*(uff + dob_gain*ob_x_hat_y(2)) - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
+  ob_x_hat_y = ob_x_hat_y + ob_x_hat_dot_y*1/hz_;
+
+  double u_ref_b = uff + dob_gain*ob_x_hat_y_b(2);
+
+  ob_x_hat_y_b = ob_x_hat_y;
+  
+  double u_ref = uff + dob_gain*ob_x_hat_y_b(2);
+  uy_b = u_ref;
+
+  if(tick_index >= 4.0*hz_)
+  {
+    cout << "Ready" << endl;
+    uy_b = (Keso(0) + 1)*u_ref - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
+  }
   
   com_dob_u = com_desired_;
   com_dob_u(1) = uy_b;
-  e_dis_2_graph << ob_x_hat_y(0) << "," << ob_x_hat_y(2) << "," << u_ref << "," << sim_time_ << "," << pelv_support_current_.rotation()(0,0) << endl;
+
+  e_dis_2_graph << "," << u_ref_b << "," << u_ref << "," << y_hat_cp << "," << y_cp << endl;
 }
 
-void WalkingController::alpha_calc()
+void WalkingController::Com_SO()
 {
-  double foot_width = 0.17;
-  double tmp_calc = abs(foot_step_support_frame_(current_step_num_,1)) - foot_width;
-  if(foot_step_(current_step_num_,6) == 1)
-  {//lfoot
-    alpha = (abs(zmp_desired_(1)) - 0.5*foot_width)/tmp_calc;
+  double uff1 = com_desired_(1);
+  double uff2 = com_desired_(1) - 0.5*foot_step_support_frame_(current_step_num_,1);
+  double kp = 125, kv = 10;
+
+  Eigen::MatrixXd A, B, C, D, Leso, Keso;
+
+  double y_hat1, y_hat2;
+  double y_sensor1, y_sensor2;
+
+  Leso.resize(1,3); Keso.resize(1,2);
+  A.resize(3,3);
+  A << 0,1,0, -kp,-kv,kp, 0,0,0;
+  B.resize(3,1);
+  B << 0,kp,0;
+
+  double Keso_real = -10;
+  double Keso_im = 2;
+
+  Keso << (Keso_real*Keso_real - Keso_im*Keso_im)/kp - 1, -(2*Keso_real + kv)/kp;
+
+  if(walking_tick_ == 0)
+  {
+    ob_x_hat_y.setZero();
+    ob_x_hat_y2.setZero();
+    ob_x_hat_y(0) = com_support_init_(1);
+    ob_x_hat_y2(0) = com_support_init_(1);
+    ob_x_hat_y_b = ob_x_hat_y;
+    ob_x_hat_y_b2 = ob_x_hat_y2;
+    ob_x_hat_dot_y.setZero();
+    ob_x_hat_dot_y2.setZero();
+    uy_b = (Keso(0) + 1)*uff1 - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
   }
-  else
-  {//rfoot
-    alpha = (tmp_calc + 0.5*foot_width - abs(zmp_desired_(1)))/tmp_calc;
-  }
-  if(alpha > 1)
-    alpha = 1;
-  else if(alpha < 0)
-    alpha = 0;
-}
 
-void WalkingController::choi_tro()
-{
-  double yzmp_gain, ycom_gain;
-  yzmp_gain = 1.8; ycom_gain = 3.8;//3.8;
-  Eigen::Vector3d choi_tro_com_dot;
-  choi_tro_com_dot.setZero();
-
-  choi_tro_com_dot(1) = - yzmp_gain*(ref_zmp_(walking_tick_,1) - zmp_measured_LPF(1) - 0.001903) + ycom_gain*(com_desired_(1) - com_support_current_(1));
-
-  //e_tmp_graph << ref_zmp_(walking_tick_,1) << "," << zmp_measured_LPF(1) << "," << com_desired_(1) << "," << com_support_current_(1) << "," << choi_tro_com_dot(1) << endl;
+  double Leso_r = -30;
+  double Leso_im = 2;
+  double Ll1pLl2 = 2*Leso_r;
+  double Ll1mLl2 = Leso_r*Leso_r - Leso_im*Leso_im;
+  double Ll3 = -20;
   
-  choi_integral_com_ = choi_integral_com_ + choi_tro_com_dot*1/hz_;
-  com_dob_u = com_desired_ + choi_integral_com_;
+  Leso(0) = -kv - Ll1pLl2 - Ll3;
+  Leso(1) = Ll1mLl2 + Ll3*(Ll1pLl2) - kp - Leso(0)*kv;
+  Leso(2) = -Ll3*Ll1mLl2/kp;
+  
+  C.resize(1,3);
+  C << 1,0,0;
+  D.resize(1,1);
+  D << 0;
+  
+  y_hat1 = C(0)*ob_x_hat_y_b(0) + C(1)*ob_x_hat_y_b(1) + C(2)*ob_x_hat_y_b(2) + D(0)*uy_b;
+  y_hat2 = C(0)*ob_x_hat_y_b2(0) + C(1)*ob_x_hat_y_b2(1) + C(2)*ob_x_hat_y_b2(2) + D(0)*uff2;
 
-  e_dis_c_graph << com_dob_u(1) << "," << choi_integral_com_(1) << endl;
+  y_sensor1 = com_support_current_imu(1);
+  y_sensor2 = com_support_current_imu(1) - 0.5*foot_step_support_frame_(current_step_num_,1);
+  
+  com_dob_u = com_desired_;
+  com_dob_u(1) = uy_b;
+
+  ob_x_hat_dot_y = A*ob_x_hat_y_b + B*uy_b + Leso*(y_sensor1 - y_hat1);
+  ob_x_hat_dot_y2 = A*ob_x_hat_y_b2 + B*uff2 + Leso*(y_sensor2 - y_hat2);
+  
+  double theta = abs(atan2(uff2, zc_));
+  com_dot_desired_(1) = (uff2 - com_desired_b(1))*hz_;
+
+  e_dis_2_graph << ob_x_hat_y2(0) << "," << ob_x_hat_y2(1) << "," << ob_x_hat_y2(2) << "," << uff2 << "," << ob_x_hat_y2(0) + 0.5*foot_step_support_frame_(current_step_num_,1) << "," << theta << endl;
+  
+  ob_x_hat_y = ob_x_hat_y + ob_x_hat_dot_y*1/hz_;
+  ob_x_hat_y2 = ob_x_hat_y2 + ob_x_hat_dot_y2*1/hz_;
+  ob_x_hat_y_b = ob_x_hat_y;
+  ob_x_hat_y_b2 = ob_x_hat_y2;
+
+  double u_ref = uff1;
+  uy_b = u_ref;
+  
+  if(tick_index >= 2.0*hz_)
+  {
+    uy_b = (Keso(0) + 1)*u_ref - Keso(0)*ob_x_hat_y(0) - Keso(1)*ob_x_hat_y(1);
+  }
+
+  com_dob_u = com_desired_;
+  com_dob_u(1) = uy_b;
+  double collide_tmp = 0.1 *hz_;
+  e_tmp_2_graph << com_dob_u(2);
+  if(walking_tick_ > t_start_ + t_total_ - t_rest_last_ - t_double2_ - collide_tmp)
+  {
+    if(walking_tick_ < t_start_ + t_total_ - t_rest_last_ - t_double2_ + collide_tmp)
+    {
+      com_dob_u(2) = com_dob_u(2) - 10*abs(ob_x_hat_y2(1)*sin(theta)*cos(theta)/kp);
+    }
+  }
+  e_tmp_2_graph << "," << com_dob_u(2) << endl;
+}
+
+//jump
+void WalkingController::e_jump_trajectory()
+{
+  double jump_ready_tick = 3.0*hz_;
+  double jump_start_tick = 5.0*hz_;
+  double jump_motion_time = 0.7;
+  double jump_motion_tick = 0.7*hz_;
+
+  double jump_ready_height = 0.7;
+  double jump_start_height = 0.75;
+  double jump_target_height = 0.5;
+
+  double jump_target_velocity = sqrt(2*GRAVITY*jump_target_height);
+  double jump_target_acceleration = 0.0;
+
+  //ready phase
+  com_dob_u(0) = com_desired_(0);
+  com_dob_u(1) = com_desired_(1);
+  com_dob_u(2) = DyrosMath::cubic(tick_index, 0.0, jump_ready_tick, zc_, jump_ready_height, 0.0, 0.0);
+
+  //5th order polynomial
+  Eigen::Matrix3d calc_poly_coeff_mat_;
+  calc_poly_coeff_mat_.setZero();
+  calc_poly_coeff_mat_ <<   pow(jump_motion_time,3),    pow(jump_motion_time,4),    pow(jump_motion_time,5),
+                          3*pow(jump_motion_time,2),  4*pow(jump_motion_time,3),  5*pow(jump_motion_time,4),
+                          6*pow(jump_motion_time,1), 12*pow(jump_motion_time,2), 20*pow(jump_motion_time,3);
+  
+  Eigen::Vector3d calc_poly_coeff_vec_;
+  calc_poly_coeff_vec_ << jump_start_height - jump_ready_height, jump_target_velocity, jump_target_acceleration;
+
+  Eigen::Vector3d poly_coeff_ = calc_poly_coeff_mat_.inverse()*calc_poly_coeff_vec_;
+
+  if (tick_index >= jump_start_tick)
+  {
+    double jump_time = (tick_index - jump_start_tick)/hz_;
+    if (jump_time <= jump_motion_time)
+    {
+      double tra_tmp = jump_ready_height + poly_coeff_(0)*pow(jump_time,3) + poly_coeff_(1)*pow(jump_time,4) + poly_coeff_(2)*pow(jump_time,5);
+      com_dob_u(2) = tra_tmp;
+    }
+    else
+    {
+      //com_dob_u(2) = jump_start_height + DyrosMath::cubic(tick_index, 1141, 1200, 0.0, -0.05, jump_target_velocity/200, 0.0);
+      com_dob_u(2) = jump_start_height + DyrosMath::cubic(tick_index, 1141, 1200, 0.0, -0.05, 0.0, 0.0);      
+    }
+  }
+
+  e_jump_impedance();
+}
+
+void WalkingController::e_jump_impedance()
+{
+  double mass_gravity = 0;
+  if (tick_index == 0)
+  {
+    mass_gravity = 443;
+    z_pos = 0;
+    z_vel = 0;
+  }
+
+  double k_coeff = 100000;
+  double z_acc = 0.0;
+  if(tick_index >= 1150)
+  {
+    if(l_ft_(2) + r_ft_(2) < 0)
+      {
+        z_acc = (- l_ft_(2) - r_ft_(2) - mass_gravity)/k_coeff;
+        z_vel = z_vel + z_acc*1/hz_;
+        z_pos = z_pos + z_vel*1/hz_ + 0.5*z_acc*1/hz_*1/hz_;
+      }
+  }
+    
+  e_jump_graph << l_ft_(2) + r_ft_(2) << "," << z_acc << "," << z_vel << "," << z_pos << endl;
+  //com_dob_u(2) = com_dob_u(2) - z_pos;
+}
+
+void WalkingController::e_jump_zmp_control()
+{
+  double prev_time = 1.6;
+  double prev_tick = prev_time*hz_;
+
+  Eigen::VectorXd zmp_x_ref, zmp_y_ref;
+  zmp_x_ref.resize(prev_tick);
+  zmp_y_ref.resize(prev_tick);
+
+  for(int i = 0; i < prev_tick; i++)
+  {
+    zmp_x_ref(i) = ref_zmp_(i,0);
+    zmp_y_ref(i) = ref_zmp_(i,1);
+  }
+
+  Eigen::MatrixXd A,B,C,Q,R;
+  A.resize(3,3);
+  A.setZero();
+  A(0,0) = 1; A(0,1) = del_t; A(0,2) = 0.5*del_t*del_t;
+              A(1,1) = 1;     A(1,2) = del_t;
+                              A(2,2) = 1;
+
+  B.resize(3,1);
+  B.setZero();
+  B(0,0) = del_t*del_t*del_t/6;
+  B(1,0) = del_t*del_t/2;
+  B(2,0) = del_t;
+
+  C.resize(1,3);
+  C.setZero();
+  C(0,0) = 1; C(0,1) = 0; C(0,2) = -zc_/GRAVITY;
+
+  Q.resize(4,4);
+  Q.setZero();
+  Q(0,0) = 1;
+
+  R.resize(1,1);
+  R.setZero();
+  R(0,0) = 1e-6;
+
+  Eigen::MatrixXd A_t, B_t, C_t, I_t, F_t, K_t;
+  B_t.resize(4,1);
+  B_t.setZero();
+  B_t.block<1,1>(0,0) = C*B;
+  B_t.block<3,1>(1,0) = B;
+  
+  I_t.resize(4,1);
+  I_t.setZero();
+  I_t(0,0) = 1;
+
+  F_t.resize(4,3);
+  F_t.setZero();
+  F_t.block<1,3>(0,0) = C*A;
+  F_t.block<3,3>(1,0) = A;
+
+  A_t.resize(4,4);
+  A_t.setZero();
+  A_t.block<4,1>(0,0) = I_t;
+  A_t.block<4,3>(0,1) = F_t;
+
+  K_t.resize(4,4);
+  K_t.setZero();
+  K_t(0,0) =    110.8102;
+  K_t(0,1) =   6084.0397;
+  K_t(0,2) =   1663.9597;
+  K_t(0,3) =      4.2617;
+  
+  K_t(1,0) = K_t(0,1);
+  K_t(1,1) = 341381.4154;
+  K_t(1,2) =  93392.3017;
+  K_t(1,3) =    246.1489;
+  
+  K_t(2,0) = K_t(0,2);
+  K_t(2,1) = K_t(1,2);
+  K_t(2,2) =  25549.8003;
+  K_t(2,3) =     67.4240;
+
+  K_t(3,0) = K_t(0,3);
+  K_t(3,1) = K_t(1,3);
+  K_t(3,2) = K_t(2,3);
+  K_t(3,3) =      0.2012;
+  
+  Eigen::MatrixXd Gi, Gx, Gd, Ac_t, X_t;
+  Gi.resize(1,1);
+  Gi.setZero();
+  Gi = B_t.transpose()*K_t*I_t;
+  Gi = Gi/(R + B_t.transpose()*K_t*B_t)(0,0);
+  
+  Gx.resize(1,3);
+  Gx.setZero();
+  Gx = B_t.transpose()*K_t*F_t;
+
+  Ac_t.resize(4,4);
+  Ac_t.setZero();
+  Ac_t = A_t - B_t.transpose()*B_t*K_t*A_t/(R + B_t.transpose()*K_t*B_t)(0,0);
+
+  X_t.resize(4,prev_tick);
+  X_t.setZero();
+  X_t.block<4,1>(0,0) = -Ac_t.transpose()*K_t*I_t;
+
+  cout << Gi << endl;
+  cout << Gx << endl;
+  cout << Ac_t << endl;
+  cout << X_t.block<4,1>(0,0) << endl;
+
+  Gd.resize(1,prev_tick);
+  Gd.setZero();
+  Gd(0,0) = -Gi(0,0);
+
+  for(int i = 1; i < prev_tick; i++)
+  {
+    X_t.block<4,1>(0,i) = Ac_t.transpose()*X_t.block<4,1>(0,i-1);
+    Gd.block<1,1>(0,i) = B_t.transpose()*X_t.block<4,1>(0,i-1)/(R + B_t.transpose()*K_t*B_t)(0,0);
+  }
+  if(tick_index == 0)
+    e_jump_graph << Gd << endl;
 }
 
 void WalkingController::econom2_task_compliant()
 {
-  Eigen::Matrix<double, 6, 18> tmp_l_leg_jaco_;
-  Eigen::Matrix<double, 6, 18> tmp_r_leg_jaco_;
-
-  tmp_l_leg_jaco_ = model_.getLegWithVLinkJacobian((DyrosJetModel::EndEffector)0);
-  tmp_r_leg_jaco_ = model_.getLegWithVLinkJacobian((DyrosJetModel::EndEffector)1);
-
   Eigen::Matrix<double, 6, 34> tmp_l_leg_full_jaco_;
   Eigen::Matrix<double, 6, 34> tmp_r_leg_full_jaco_;
 
   model_.getJacobianMatrix34DoF((DyrosJetModel::EndEffector)0, &tmp_l_leg_full_jaco_);
   model_.getJacobianMatrix34DoF((DyrosJetModel::EndEffector)1, &tmp_r_leg_full_jaco_);
-                                         
-  Eigen::Matrix<double, 18, 18> tmp_leg_inertia;
-  tmp_leg_inertia = model_.getLegInertia();
+
+  Eigen::Matrix<double, 12, 34> tmp_contact_full_jaco_;
+  tmp_contact_full_jaco_ << tmp_l_leg_full_jaco_, tmp_r_leg_full_jaco_ ;
+
+  Eigen::Matrix<double, 12, 1> tmp_contact_force_;
+  tmp_contact_force_ << l_ft_ , r_ft_;
 
   Eigen::Matrix<double, 34, 34> tmp_full_inertia;
   tmp_full_inertia = model_.getFullInertia();
 
-  Eigen::Matrix<double, 6, 6> tmp_contact_lambda_inv_;
-  tmp_contact_lambda_inv_ = tmp_l_leg_full_jaco_*tmp_full_inertia.inverse()*tmp_l_leg_full_jaco_.transpose();
-  Eigen::Matrix<double, 6, 6> tmp_contact_lambda_;
-  tmp_contact_lambda_ = tmp_contact_lambda_inv_.inverse();
+  Eigen::Matrix<double, 6, 34> tmp_pelvis_full_jaco_;
+  model_.getpelvJacobianMatrix34DoF(true, &tmp_pelvis_full_jaco_);
 
-  Eigen::Matrix<double, 34, 6> tmp_contact_jaco_bar_;
-  tmp_contact_jaco_bar_ = tmp_full_inertia.inverse()*tmp_l_leg_full_jaco_.transpose()*tmp_contact_lambda_;
+  Eigen::Matrix<double, 6, 6> tmp_pelvis_lambda_inv_;
+  tmp_pelvis_lambda_inv_ = tmp_pelvis_full_jaco_*tmp_full_inertia.inverse()*tmp_pelvis_full_jaco_.transpose();
 
-  Eigen::Matrix<double, 34, 34> tmp_contact_P_;
-  tmp_contact_P_ = tmp_l_leg_full_jaco_.transpose()*tmp_contact_jaco_bar_.transpose();
+  Eigen::Matrix<double, 6, 6> tmp_pelvis_lambda_;
+  tmp_pelvis_lambda_ = tmp_pelvis_lambda_inv_.inverse();
 
-  Eigen::Matrix<double, 34, 34> tmp_identity_;
-  tmp_identity_.setIdentity();
+  Eigen::Matrix<double, 12, 1> tmp_contact_force0_;
+  tmp_contact_force0_ << -0.14, 14.58, -216.79, 0.76, 8.77, -2.18, 0.33, -14.61, -225.74, -0.14, 9.63, 2.11;
 
-  Eigen::Matrix<double, 6, 34> tmp_selection_; tmp_selection_.setZero();
-  tmp_selection_.block<6,6>(0,6).setIdentity();
+  Eigen::Matrix<double, 6, 1> tmp_F0_;
+  tmp_F0_ = tmp_pelvis_lambda_*tmp_pelvis_full_jaco_*tmp_full_inertia.inverse()*tmp_contact_full_jaco_.transpose()*tmp_contact_force0_;
 
-  Eigen::Matrix<double, 6, 6> tmp_selection_m_;
-  tmp_selection_m_ = tmp_selection_*tmp_full_inertia.inverse()*(tmp_identity_ - tmp_contact_P_)*tmp_selection_.transpose();
+  Eigen::Matrix<double, 6, 1> tmp_F_;
+  tmp_F_ = tmp_pelvis_lambda_*tmp_pelvis_full_jaco_*tmp_full_inertia.inverse()*tmp_contact_full_jaco_.transpose()*tmp_contact_force_;
 
-  if (tick_index == 1.0*hz_)
-  {
-    e_tmp_graph << tmp_selection_m_ << endl << endl;
-  }
-  
-
-  
-
-
-  e_l_leg_jaco_ << tmp_l_leg_jaco_.block(0,0,6,12);
-  e_r_leg_jaco_ << tmp_r_leg_jaco_.block(0,0,6,6), tmp_r_leg_jaco_.block(0,12,6,6);
-
-  e_l_leg_jaco_v_ = e_l_leg_jaco_.block(0,0,3,12);
-  e_r_leg_jaco_v_ = e_r_leg_jaco_.block(0,0,3,12);
-
-  
-
-  e_l_leg_inertia_mat_ = tmp_leg_inertia.block(0,0,12,12);
-  e_r_leg_inertia_mat_ << tmp_leg_inertia.block(0,0,6,6), tmp_leg_inertia.block(0,12,6,6), tmp_leg_inertia.block(12,0,6,6), tmp_leg_inertia.block(12,12,6,6);
-
-  e_l_leg_lambda_ = (e_l_leg_jaco_*e_l_leg_inertia_mat_.inverse()*e_l_leg_jaco_.transpose()).inverse();
-  e_r_leg_lambda_ = (e_r_leg_jaco_*e_r_leg_inertia_mat_.inverse()*e_r_leg_jaco_.transpose()).inverse();
-
-  e_l_leg_lambda_v_ = e_l_leg_lambda_.block(0,0,3,3);
-  e_r_leg_lambda_v_ = e_r_leg_lambda_.block(0,0,3,3);
-
-  alpha_calc();
-
-  double mass_t = 442.5/GRAVITY;
-  double l_foot_desired_force_ = (1-alpha)*mass_t*GRAVITY;
-  double r_foot_desired_force_ = alpha*mass_t*GRAVITY;
-  double desired_r_torque_ = 0, l_foot_desired_r_torque_ = 0, r_foot_desired_r_torque_ = 0;
-  
-  double tmp_r_zmp_length = 0, tmp_l_zmp_length = 0;
-
-  double lfoot_comp_x_ddot_ = 0, rfoot_comp_x_ddot_ = 0;
-
-  double t_tmp_ = 0.10*hz_;
-  double gain_ttmp = 0;
-  
-  if(walking_tick_ == 0)
-  {
-    lfoot_comp_x_dot_b_ = 0;
-    lfoot_comp_x_dot_ = 0;
-
-    rfoot_comp_x_dot_b_ = 0;
-    rfoot_comp_x_dot_ = 0;
-  }
-  
-  double r_ft_comp_ = abs(r_ft_LPF_(2)) + 5.9;
-  double l_ft_comp_ = abs(l_ft_LPF_(2)) - 5.9;
-
-  rfoot_comp_x_ddot_ = (r_ft_comp_ - r_foot_desired_force_)/e_r_leg_lambda_v_(2,2) - 5*rfoot_comp_x_dot_b_;
-  rfoot_comp_x_dot_ = rfoot_comp_x_dot_b_ + rfoot_comp_x_ddot_/hz_;
-  rfoot_comp_x_ = rfoot_comp_x_b_ + rfoot_comp_x_dot_b_/hz_ + 0.5*rfoot_comp_x_ddot_/(hz_*hz_);
-
-  lfoot_comp_x_ddot_ = (l_ft_comp_ - l_foot_desired_force_)/e_l_leg_lambda_v_(2,2) - 5*lfoot_comp_x_dot_b_;
-  lfoot_comp_x_dot_ = lfoot_comp_x_dot_b_ + lfoot_comp_x_ddot_/hz_;
-  lfoot_comp_x_ = lfoot_comp_x_b_ + lfoot_comp_x_dot_b_/hz_ + 0.5*lfoot_comp_x_ddot_/(hz_*hz_);
-  
-  double tmp = DyrosMath::cubic(tick_index, 3.0*hz_, 4.0*hz_, 0.0, 0.0, 0.0, 0.0);
-  lfoot_trajectory_support_.translation()(2) = lfoot_trajectory_support_.translation()(2) + tmp*lfoot_comp_x_;
-  rfoot_trajectory_support_.translation()(2) = rfoot_trajectory_support_.translation()(2) + tmp*lfoot_comp_x_;
-  com_dob_u(2) = com_dob_u(2) + tmp;
-  com_t_bb = com_t_b;
-  com_t_b =  com_t;
-  com_t = com_dob_u(2);
-  double com_t_ddot = (com_t - 2*com_t_b + com_t_bb)*hz_*hz_;
-
-  lfoot_comp_x_dot_b_ = lfoot_comp_x_dot_;
-  rfoot_comp_x_dot_b_ = rfoot_comp_x_dot_;
-
-  lfoot_comp_x_b_ = lfoot_comp_x_;
-  rfoot_comp_x_b_ = rfoot_comp_x_;
-
-  e_alpha_graphl << lfoot_comp_x_ddot_ << "," << lfoot_trajectory_support_.translation()(2) << "," << lfoot_support_current_.translation()(2) << "," << l_ft_comp_ << "," << l_foot_desired_force_ << "," << lfoot_comp_x_dot_ << "," << lfoot_comp_x_ << endl;
-  e_alpha_graphr << rfoot_comp_x_ddot_ << "," << rfoot_trajectory_support_.translation()(2) << "," << rfoot_support_current_.translation()(2) << "," << r_ft_comp_ << "," << r_foot_desired_force_ << "," << rfoot_comp_x_dot_ << "," << rfoot_comp_x_ << endl;
+  e_tmp_2_graph << tmp_F0_(0) << "," << tmp_F0_(1) << "," << tmp_F0_(2) << "," << tmp_F0_(3) << "," << tmp_F0_(4) << "," << tmp_F0_(5) << "," << tmp_F_(0) << "," << tmp_F_(1) << "," << tmp_F_(2) << "," << tmp_F_(3) << "," << tmp_F_(4) << "," << tmp_F_(5) << endl;
 }
 
 void WalkingController::apply_ext_force()
 {
-  const double ext_force_time = 3.0*hz_;
-  const double ext_force_duration = 0.3*hz_;
+  const double ext_force_time = 5.0*hz_;
+  const double ext_force_duration = 1.0*hz_;
   
-  mujoco_ext_force_apply_pub = nh_ext_force_.advertise<std_msgs::Float32MultiArray>("/dyros_jet/applied_ext_force",10);
+  //mujoco_ext_force_apply_pub = nh_ext_force_.advertise<std_msgs::Float32MultiArray>("/dyros_jet/applied_ext_force",10);
   mujoco_applied_ext_force.data.resize(7);
 
-  const double max_force = 70.0;
+  const double max_force = 0.0;
+  const double z_axis_const = 1;
+
   mujoco_applied_ext_force.data[0] = 0.0;
-  mujoco_applied_ext_force.data[1] = DyrosMath::cubic(tick_index, ext_force_time, ext_force_time + ext_force_duration, 0.0, max_force, 0.0, 0.0);
-  mujoco_applied_ext_force.data[2] = DyrosMath::cubic(tick_index, ext_force_time, ext_force_time + ext_force_duration, 0.0, -2*max_force, 0.0, 0.0);
+  mujoco_applied_ext_force.data[1] = DyrosMath::cubic(tick_index, ext_force_time, ext_force_time + ext_force_duration, 0.0,   max_force, 0.0, 0.0);
+  mujoco_applied_ext_force.data[2] = DyrosMath::cubic(tick_index, ext_force_time, ext_force_time + ext_force_duration, 0.0, - 2*max_force, 0.0, 0.0);
   mujoco_applied_ext_force.data[3] = 0.0;
   mujoco_applied_ext_force.data[4] = 0.0;
   mujoco_applied_ext_force.data[5] = 0.0;
 
-  if(tick_index >= ext_force_time + 1*ext_force_duration)
+  if(tick_index >= ext_force_time + 3*ext_force_duration)
   {
-    mujoco_applied_ext_force.data[1] = DyrosMath::cubic(tick_index, ext_force_time + 1*ext_force_duration, ext_force_time + 2*ext_force_duration, max_force, -max_force, 0.0, 0.0);
+    mujoco_applied_ext_force.data[1] = DyrosMath::cubic(tick_index, ext_force_time + 3*ext_force_duration, ext_force_time + 4*ext_force_duration,   max_force, 0.0, 0.0, 0.0);
+    mujoco_applied_ext_force.data[2] = DyrosMath::cubic(tick_index, ext_force_time + 3*ext_force_duration, ext_force_time + 4*ext_force_duration, - 2*max_force, 0.0, 0.0, 0.0);
   }
-  if(tick_index >= ext_force_time + 2*ext_force_duration)
-  {
-    mujoco_applied_ext_force.data[1] = DyrosMath::cubic(tick_index, ext_force_time + 2*ext_force_duration, ext_force_time + 3*ext_force_duration, -max_force, 0.0, 0.0, 0.0);
-    mujoco_applied_ext_force.data[2] = DyrosMath::cubic(tick_index, ext_force_time + 2*ext_force_duration, ext_force_time + 3*ext_force_duration, -2*max_force, 0.0, 0.0, 0.0);
-  }
-  mujoco_applied_ext_force.data[6] = 15;
-  
-  e_tmp_graph << mujoco_applied_ext_force.data[1] << endl;
+  mujoco_applied_ext_force.data[6] = 1;
+
+  //e_tmp_graph << collide_ft_(0) << "," << collide_ft_(1) << "," << collide_ft_(2) << "," << mujoco_applied_ext_force.data[1] << "," << mujoco_applied_ext_force.data[2] << endl;
+  //cout << collide_ft_(0) << "," << collide_ft_(1) << "," << collide_ft_(2) << endl;
   mujoco_ext_force_apply_pub.publish(mujoco_applied_ext_force);
 }
 

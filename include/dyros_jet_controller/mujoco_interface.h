@@ -28,8 +28,6 @@ private:  // CALLBACK
   void simCommandCallback(const  std_msgs::StringConstPtr& msg);
   void simTimeCallback(const std_msgs::Float32ConstPtr &msg);
   void simready();
-  void torque_control();
-  void joint_control();
 
   //void your_Callback(const sensor_msgs::ImuConstPtr& msg);
 

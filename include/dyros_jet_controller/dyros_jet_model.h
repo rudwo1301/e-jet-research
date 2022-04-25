@@ -56,6 +56,9 @@ public:
   void updateSensorData(const Eigen::Vector6d &r_ft, const Eigen::Vector6d &l_ft);
 
   void updateSensorData(const Eigen::Vector6d &r_ft, const Eigen::Vector6d &l_ft, const Eigen::Vector12d &q_ext, const Eigen::Vector3d &acc, const Eigen::Vector3d &angvel, const Eigen::Vector3d &grav_rpy);
+  
+  //econom2
+  void updateSensorData(const Eigen::Vector6d &r_ft, const Eigen::Vector6d &l_ft, const Eigen::Vector12d &q_ext, const Eigen::Vector3d &acc, const Eigen::Vector3d &angvel, const Eigen::Vector3d &grav_rpy, const Eigen::Vector3d &collide_ft);
 
   void updateSimCom(const Eigen::Vector3d &sim_com);
   void updateSimGyro(const Eigen::Vector3d &sim_gyro);
@@ -78,6 +81,7 @@ public:
   void getJacobianMatrix7DoF(EndEffector ee, Eigen::Matrix<double, 6, 7> *jacobian);
   void getJacobianMatrix18DoF(EndEffector ee, Eigen::Matrix<double, 6, 18> *jacobian);
   void getJacobianMatrix34DoF(EndEffector ee, Eigen::Matrix<double, 6, 34> *jacobian);
+  void getpelvJacobianMatrix34DoF(bool pelvis_option, Eigen::Matrix<double, 6, 34> *jacobian);
 
   // Gravity compensator_MJ 20/10/07
   void getLegLinksJacobianMatrix(unsigned int id, Eigen::Matrix<double, 6, 6> *jacobian);
@@ -119,6 +123,8 @@ public:
   const Eigen::Vector3d& getImuAccel() {return accel_;}
   const Eigen::Vector3d& getImuAngvel() {return angvel_;}
   const Eigen::Vector3d& getImuGravityDirection() {return grav_rpy_;}
+  //econom2
+  const Eigen::Vector3d& getCollideForce() {return collide_ft_;}
 
 
   const Eigen::Matrix<double, 18, 18>& getLegInertia() { return leg_inertia_mat_; }
@@ -174,6 +180,8 @@ private:
   Eigen::Matrix28d A_;
   Eigen::MatrixXd A_temp_;
 
+  //econom2
+  Eigen::Vector3d collide_ft_;
 
   };
 

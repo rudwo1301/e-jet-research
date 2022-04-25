@@ -82,11 +82,13 @@ public:
   void getPelvTrajectory();
   void getFootTrajectory();
   void computeIK_e(Eigen::Isometry3d float_trunk_transform, Eigen::Isometry3d float_lleg_transform, Eigen::Isometry3d float_rleg_transform, Eigen::Vector12d& desired_leg_q);
+  void computeIK_e_jaco(Eigen::Isometry3d float_trunk_transform, Eigen::Isometry3d float_lleg_transform, Eigen::Isometry3d float_rleg_transform, Eigen::Vector12d& desired_leg_q);
   void compensator();
 
   void supportToFloatPattern();
   void updateNextStepTime();
   void updateInitialState(); 
+
   //functions for getFootStep()
   void floatToSupportFootstep();
   void addZmpOffset();
@@ -116,9 +118,8 @@ public:
   bool Com_DoB_js_calc = false;
   void Com_DoB1_COM();
   void Com_DoB2_ESO();
+  void Com_SO();
   void choi_tro();
-
-  void mj_zmp();
 
   //dg ext force//
   void apply_ext_force();
@@ -151,6 +152,7 @@ public:
   Eigen::Vector2d zmp_measured_LPF;
   Eigen::Vector2d zmp_measured_LPF_b;
   Eigen::Vector2d zmp_err_;
+  Eigen::Vector2d zmp_e_calc_;
 
   Eigen::Vector3d com_swing_current_;
   Eigen::Vector3d com_trajectory_swing_;
@@ -161,6 +163,10 @@ public:
   Eigen::Vector3d ob_x_hat_y;
   Eigen::Vector3d ob_x_hat_y_b;
   Eigen::Vector3d ob_x_hat_dot_y;
+
+  Eigen::Vector3d ob_x_hat_y2;
+  Eigen::Vector3d ob_x_hat_y_b2;
+  Eigen::Vector3d ob_x_hat_dot_y2;
 
   Eigen::Vector3d ob_x_hat_z;
   Eigen::Vector3d ob_x_hat_dot_z;
@@ -230,10 +236,28 @@ public:
   Eigen::Vector6d l_ft_LPF_;
   Eigen::Vector6d r_ft_LPF_;
 
+  Eigen::Vector3d collide_ft_;
+  Eigen::Vector3d collide_ft_b;
+  Eigen::Vector3d grav_vec_;
+  
   void alpha_calc();
   void e_TMP();
 
   double sim_time_;
+  Eigen::Vector6d tmp_vec;
+
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////econom2 jump///////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////
+
+  void e_jump_trajectory();
+  void e_jump_impedance();
+  double z_pos;
+  double z_vel;
+  void e_jump_zmp_control();
+
   ////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////econom2 function end///////////////////////////////////

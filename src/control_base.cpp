@@ -91,8 +91,10 @@ void ControlBase::update()
     q_ext_offset_ = q_ext_ + extencoder_offset_;
   }
   DyrosMath::toEulerAngle(imu_data_.x(), imu_data_.y(), imu_data_.z(), imu_data_.w(), imu_grav_rpy_(0), imu_grav_rpy_(1), imu_grav_rpy_(2));
-  model_.updateSensorData(right_foot_ft_, left_foot_ft_, q_ext_offset_, accelometer_, gyro_, imu_grav_rpy_);
-
+  
+  //econom2
+  //model_.updateSensorData(right_foot_ft_, left_foot_ft_, q_ext_offset_, accelometer_, gyro_, imu_grav_rpy_);
+  model_.updateSensorData(right_foot_ft_, left_foot_ft_, q_ext_offset_, accelometer_, gyro_, imu_grav_rpy_, collide_ft_);
 
   Eigen::Matrix<double, DyrosJetModel::MODEL_WITH_VIRTUAL_DOF, 1> q_vjoint, q_vjoint_dot;
   q_vjoint.setZero();
@@ -220,6 +222,8 @@ void ControlBase::parameterInitialize()
   torque_.setZero();
   left_foot_ft_.setZero();
   right_foot_ft_.setZero();
+  //econom2
+  collide_ft_.setZero();
   desired_q_.setZero();
   extencoder_init_flag_ = false;
 }

@@ -124,10 +124,23 @@ void mujoco_interface::sensorStateCallback(const mujoco_ros_msgs::SensorStateCon
 
         }
 
+        if(msg->sensor[i].name=="collide"){
+            for(int j=0;j<3;j++){
+                  collide_ft_(j) = msg->sensor[i].data[j];
+            }
+
+        }
+
     }
 
    left_foot_ft_ = DyrosMath::lowPassFilter<6>(left_foot_ft, left_foot_ft_, 1.0 / 200, 0.05);
    right_foot_ft_ = DyrosMath::lowPassFilter<6>(right_foot_ft, right_foot_ft_, 1.0 / 200, 0.05);
+   
+   double zmp_l = (left_foot_ft_(3) - left_foot_ft_(1)*0.096) / left_foot_ft_(2);
+   double zmp_r = (right_foot_ft_(3) - right_foot_ft_(1)*0.096) / right_foot_ft_(2);
+   double zmp = (zmp_l*left_foot_ft_(2) + zmp_r*right_foot_ft_(2))/(left_foot_ft_(2) + right_foot_ft_(2));
+   ofstream tmp("/home/econom2/data/tmp.txt");
+   tmp << zmp << endl;
 }
 
 void mujoco_interface::simCommandCallback(const std_msgs::StringConstPtr &msg)
@@ -163,6 +176,9 @@ void mujoco_interface::simCommandCallback(const std_msgs::StringConstPtr &msg)
     rst_msg_.data="INIT";
     mujoco_sim_command_pub_.publish(rst_msg_);
   }
+
+  std::cout << buf << std::endl;
+  std::cout << "11: " << mujoco_init_receive << std::endl;
 
 }
 
